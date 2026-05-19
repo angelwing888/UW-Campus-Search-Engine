@@ -3,6 +3,7 @@ import calendar as calendar_module
 import json
 import os
 import re
+import warnings
 import time
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import feedparser
 import requests
+import urllib3
 from dotenv import load_dotenv
 
 
@@ -96,8 +98,23 @@ def _extract_from_description(description: str, label: str) -> str:
     return ""
 
 
+def _parse_rss_feed(url: str):
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        return feedparser.parse(response.content)
+    except requests.exceptions.SSLError:
+        with warnings.catch_warnings():
+            warnings.simplefilter(
+                "ignore", urllib3.exceptions.InsecureRequestWarning
+            )
+            response = requests.get(url, timeout=30, verify=False)
+            response.raise_for_status()
+            return feedparser.parse(response.content)
+
+
 def fetch_events_rss(url: str, now: datetime) -> List[Dict[str, Any]]:
-    feed = feedparser.parse(url)
+    feed = _parse_rss_feed(url)
     if getattr(feed, "bozo", False) and not feed.entries:
         error = getattr(feed, "bozo_exception", "Unknown RSS parse error")
         raise SystemExit(f"Failed to parse RSS feed: {error}")
