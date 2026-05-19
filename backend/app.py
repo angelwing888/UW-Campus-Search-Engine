@@ -25,6 +25,10 @@ docs: List[Dict[str, Any]] = []
 index_meta: Dict[str, Any] = {}
 index_error: Optional[str] = None
 query_hints: Dict[str, Any] = {"time": {}, "topics": {}}
+# Added a quick lookup map from doc id -> doc so the search endpoint
+# can resolve a building's metadata (notably the `site` field) when
+# returning event results. This allows the frontend to display a
+# campus badge (Seattle/Bothell/Tacoma) without an extra API call.
 doc_by_id: Dict[str, Dict[str, Any]] = {}
 
 
@@ -86,7 +90,11 @@ def load_index() -> None:
 
     with DOCS_FILE.open("r", encoding="utf-8") as handle:
         docs = json.load(handle)
-    # Build quick lookup by doc id for later use in search
+    # Build quick lookup by doc id for later use in search.
+    # This mapping was added so we can find the building document
+    # referenced by an event's `resolved_building_id` and expose the
+    # building's `site` value in the search results. Frontend code
+    # prefers that explicit `site` value to decide campus badges.
     global doc_by_id
     doc_by_id = {doc.get("id"): doc for doc in docs}
 
@@ -158,7 +166,13 @@ def search(q: str, k: int = 5) -> Dict[str, Any]:
             start_dt = _parse_dt(doc.get("start"))
             if start_dt:
                 snippet = f"{start_dt.strftime('%A, %b %d, %Y')} - {snippet}"
-        # Try to include resolved building/site info to help the frontend
+        # Try to include resolved building/site info to help the frontend.
+        # Rationale: events may reference a building id (resolved_building_id)
+        # but the event document itself doesn't include the building's
+        # `site` code. Looking up the building doc here lets us return a
+        # `site` value (e.g. "SEA_MN", "BOTHELL", "TACOMA") so the
+        # frontend can display an accurate campus badge without extra
+        # round-trips.
         resolved_building_id = doc.get("resolved_building_id")
         resolved_site = None
         if resolved_building_id:

@@ -99,6 +99,14 @@ def _extract_from_description(description: str, label: str) -> str:
 
 
 def _parse_rss_feed(url: str):
+    # Use `requests` to fetch the RSS content so we can handle TLS errors
+    # more gracefully on macOS. Some UW feeds present certificate chains
+    # that cause `feedparser.parse(url)` to raise an SSL verification
+    # problem. We try a normal verified request first, and if an
+    # SSLError occurs we fall back to a request with `verify=False`.
+    # The fallback suppresses the insecure request warning so the user
+    # isn't spammed; this is intentionally conservative and only used
+    # when TLS verification fails.
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
@@ -300,6 +308,11 @@ def fetch_buildings_arcgis(base_url: str) -> List[Dict[str, Any]]:
                 text_parts.append(f"Code: {code}")
             if address:
                 text_parts.append(f"Address: {address}")
+            # Extract the `site` property from ArcGIS building attributes
+            # (e.g. "SEA_MN", "BOTHELL", "TACOMA") and include it in
+            # the building document. This `site` value is used by the
+            # backend search endpoint to annotate events with campus
+            # information so the frontend can display a campus badge.
             site = _get_property(props, ["Site", "SITE"])
             if site:
                 text_parts.append(f"Site: {site}")
